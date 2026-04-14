@@ -8,23 +8,21 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 )
 
 func main() {
-	dbPath := strings.TrimSpace(os.Getenv("DB_PATH"))
-	if dbPath == "" {
-		dbPath = "tracks.db"
+	dsn := strings.TrimSpace(os.Getenv("DATABASE_URL"))
+	if dsn == "" {
+		log.Fatal("DATABASE_URL is required for Postgres")
 	}
-	dbPath = filepath.Clean(dbPath)
-	st, err := openStore(dbPath)
+	st, err := openStore(dsn)
 	if err != nil {
 		log.Fatalf("database: %v", err)
 	}
 	memory = st
-	log.Printf("sqlite store: %s", dbPath)
+	log.Printf("postgres store: connected")
 
 	mux := http.NewServeMux()
 	// curl.exe -i http://localhost:8080/tracks

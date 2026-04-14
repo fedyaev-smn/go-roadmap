@@ -2,10 +2,11 @@ package main
 
 import (
 	"database/sql"
+	"fmt"
 	"strings"
 	"time"
 
-	_ "modernc.org/sqlite"
+	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 // TrackEvent is one sighting of a vehicle by plate (extend later with DB, reports).
@@ -27,29 +28,16 @@ type PlateCount struct {
 	Count int64  `json:"count"`
 }
 
-const schema = `
-CREATE TABLE IF NOT EXISTS track_events (
-	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	plate TEXT NOT NULL,
-	note TEXT NOT NULL DEFAULT '',
-	seen_at TEXT NOT NULL
-);
-`
-
 type store struct {
 	db *sql.DB
 }
 
-func openStore(path string) (*store, error) {
-	db, err := sql.Open("sqlite", path)
+func openStore(dsn string) (*store, error) {
+	db, err := sql.Open("pgx", dsn)
 	if err != nil {
 		return nil, err
 	}
 	if err := db.Ping(); err != nil {
-		_ = db.Close()
-		return nil, err
-	}
-	if _, err := db.Exec(schema); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
@@ -81,27 +69,21 @@ func (s *store) Report() ([]PlateCount, error) {
 // list returns track_events ordered by id. limit <= 0 means no row cap; offset is skipped rows (>= 0).
 func (s *store) list(offset, limit int, plate string) ([]TrackEvent, error) {
 	query := `SELECT id, plate, note, seen_at FROM track_events WHERE 1=1`
-	args := []any{}
+	var args []any
 	if p := strings.TrimSpace(plate); p != "" {
-		query += ` AND plate LIKE ?`
+		query += fmt.Sprintf(` AND plate ILIKE $%d`, len(args)+1)
 		args = append(args, "%"+p+"%")
 	}
 	query += ` ORDER BY id`
 	hasLimit := limit > 0
 	hasOffset := offset > 0
-	// SQLite requires LIMIT before OFFSET; use LIMIT -1 for "no cap" when only offset is set.
-	if hasOffset && !hasLimit {
-		query += ` LIMIT -1 OFFSET ?`
+	if hasLimit {
+		query += fmt.Sprintf(` LIMIT $%d`, len(args)+1)
+		args = append(args, limit)
+	}
+	if hasOffset {
+		query += fmt.Sprintf(` OFFSET $%d`, len(args)+1)
 		args = append(args, offset)
-	} else {
-		if hasLimit {
-			query += ` LIMIT ?`
-			args = append(args, limit)
-		}
-		if hasOffset {
-			query += ` OFFSET ?`
-			args = append(args, offset)
-		}
 	}
 
 	rows, err := s.db.Query(query, args...)
@@ -113,15 +95,7 @@ func (s *store) list(offset, limit int, plate string) ([]TrackEvent, error) {
 	out := make([]TrackEvent, 0)
 	for rows.Next() {
 		var ev TrackEvent
-		var seenStr string
-		if err := rows.Scan(&ev.ID, &ev.Plate, &ev.Note, &seenStr); err != nil {
-			return nil, err
-		}
-		ev.SeenAt, err = time.Parse(time.RFC3339Nano, seenStr)
-		if err != nil {
-			ev.SeenAt, err = time.Parse(time.RFC3339, seenStr)
-		}
-		if err != nil {
+		if err := rows.Scan(&ev.ID, &ev.Plate, &ev.Note, &ev.SeenAt); err != nil {
 			return nil, err
 		}
 		out = append(out, ev)
@@ -134,15 +108,11 @@ func (s *store) list(offset, limit int, plate string) ([]TrackEvent, error) {
 
 func (s *store) add(plate, note string) (TrackEvent, error) {
 	now := time.Now().UTC()
-	res, err := s.db.Exec(
-		`INSERT INTO track_events (plate, note, seen_at) VALUES (?, ?, ?)`,
-		plate, note, now.Format(time.RFC3339Nano),
-	)
-	if err != nil {
-		return TrackEvent{}, err
-	}
-	id, err := res.LastInsertId()
-	if err != nil {
+	var id int64
+	if err := s.db.QueryRow(
+		`INSERT INTO track_events (plate, note, seen_at) VALUES ($1, $2, $3) RETURNING id`,
+		plate, note, now,
+	).Scan(&id); err != nil {
 		return TrackEvent{}, err
 	}
 	return TrackEvent{
@@ -155,18 +125,10 @@ func (s *store) add(plate, note string) (TrackEvent, error) {
 
 func (s *store) get(id int64) (TrackEvent, error) {
 	var ev TrackEvent
-	var seenStr string
 	err := s.db.QueryRow(
-		`SELECT id, plate, note, seen_at FROM track_events WHERE id = ?`,
+		`SELECT id, plate, note, seen_at FROM track_events WHERE id = $1`,
 		id,
-	).Scan(&ev.ID, &ev.Plate, &ev.Note, &seenStr)
-	if err != nil {
-		return TrackEvent{}, err
-	}
-	ev.SeenAt, err = time.Parse(time.RFC3339Nano, seenStr)
-	if err != nil {
-		ev.SeenAt, err = time.Parse(time.RFC3339, seenStr)
-	}
+	).Scan(&ev.ID, &ev.Plate, &ev.Note, &ev.SeenAt)
 	if err != nil {
 		return TrackEvent{}, err
 	}
