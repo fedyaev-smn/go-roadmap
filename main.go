@@ -38,11 +38,14 @@ func main() {
 	})
 	// GET /tracks/{id}
 	mux.HandleFunc("/tracks/", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
+		switch r.Method {
+		case http.MethodGet:
+			handleGetByID(w, r)
+		case http.MethodDelete:
+			handleDelete(w, r)
+		default:
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
 		}
-		handleGetByID(w, r)
 	})
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
@@ -160,13 +163,40 @@ func handleGetByID(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, `{"error":"not found"}`, http.StatusNotFound)
 			return
 		}
-		log.Printf("get track %d: %v", id, err)
+		log.Printf("delete track %d: %v", id, err)
 		http.Error(w, `{"error":"server error"}`, http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(ev)
+}
+
+func handleDelete(w http.ResponseWriter, r *http.Request) {
+	idPart := strings.TrimPrefix(r.URL.Path, "/tracks/")
+	idPart = strings.TrimSpace(idPart)
+	if idPart == "" || strings.Contains(idPart, "/") {
+		http.Error(w, `{"error":"not found"}`, http.StatusNotFound)
+		return
+	}
+	id, err := strconv.ParseInt(idPart, 10, 64)
+	if err != nil || id <= 0 {
+		http.Error(w, `{"error":"invalid id"}`, http.StatusBadRequest)
+		return
+	}
+	err = memory.delete(id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, `{"error":"not found"}`, http.StatusNotFound)
+			return
+		}
+		log.Printf("get track %d: %v", id, err)
+		http.Error(w, `{"error":"server error"}`, http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 }
 
 func handleReport(w http.ResponseWriter, r *http.Request) {

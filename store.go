@@ -135,6 +135,22 @@ func (s *store) get(id int64) (TrackEvent, error) {
 	return ev, nil
 }
 
+func (s *store) delete(id int64) error {
+	res, err := s.db.Exec(`DELETE FROM track_events WHERE id = $1`, id)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
 func (s *store) fixture() ([]TrackEvent, error) {
 	list := []struct {
 		plate string
