@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS track_events_plate_seen_at_idx;
