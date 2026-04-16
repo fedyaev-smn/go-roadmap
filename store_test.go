@@ -54,7 +54,7 @@ func TestStoreGet(t *testing.T) {
 
 	// Case not found
 	_, err = st.get(id + 999999)
-	if !errorsIs(err, sql.ErrNoRows) {
+	if !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("expected sql.ErrNoRows, got %v", err)
 	}
 }
@@ -74,13 +74,13 @@ func TestStoreDelete(t *testing.T) {
 	}
 	// now GET on same id should be not found
 	_, err := st.get(id)
-	if !errorsIs(err, sql.ErrNoRows) {
+	if !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("expected sql.ErrNoRows after delete, got %v", err)
 	}
 
 	// Case delete negative
 	err = st.delete(id)
-	if !errorsIs(err, sql.ErrNoRows) {
+	if !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("expected sql.ErrNoRows on second delete, got %v", err)
 	}
 }
@@ -103,7 +103,7 @@ func TestStoreReport(t *testing.T) {
 	// Insert rows
 	ids := make([]int64, 0, len(cases))
 	for _, c := range cases {
-		id := insertRow(t, st, c.plate, c.note, time.Now())
+		id := insertRow(t, st, c.plate, c.note, time.Now().UTC().Truncate(time.Microsecond))
 		ids = append(ids, id)
 	}
 	t.Cleanup(func() {
@@ -151,7 +151,7 @@ func TestStoreList(t *testing.T) {
 
 	ids := make([]int64, 0, len(rows))
 	for _, row := range rows {
-		id := insertRow(t, st, row.plate, row.note, seenAt)
+		id := insertRow(t, st, row.plate, row.note, row.seenAt)
 		ids = append(ids, id)
 	}
 
@@ -216,11 +216,6 @@ func getSt(t *testing.T) *store {
 	t.Cleanup(func() { _ = st.db.Close() })
 
 	return st
-}
-
-// tiny helper so you don't need Go 1.20+ errors.Is assumptions here
-func errorsIs(err, target error) bool {
-	return errors.Is(err, target)
 }
 
 func insertRow(t *testing.T, st *store, plate, note string, seenAt time.Time) int64 {
