@@ -241,10 +241,15 @@ func handleHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleFixture(w http.ResponseWriter, r *http.Request) {
+	if !requireAPIKey(w, r) {
+		return
+	}
+
 	if strings.TrimSpace(os.Getenv("FIXTURE")) != "1" {
 		writeJSONError(w, http.StatusNotFound, "not found")
 		return
 	}
+
 	items, err := memory.fixture()
 	if err != nil {
 		log.Printf("fixture: %v", err)
@@ -252,4 +257,18 @@ func handleFixture(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = writeJSON(w, http.StatusOK, items)
+}
+
+func requireAPIKey(w http.ResponseWriter, r *http.Request) bool {
+	want := "Bearer " + strings.TrimSpace(os.Getenv("API_KEY"))
+	if want == "" {
+		writeJSONError(w, http.StatusInternalServerError, "API_KEY not set")
+		return false
+	}
+	got := strings.TrimSpace(r.Header.Get("Authorization"))
+	if got == "" || got != want {
+		writeJSONError(w, http.StatusForbidden, "forbidden")
+		return false
+	}
+	return true
 }
