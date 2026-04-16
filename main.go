@@ -87,6 +87,16 @@ func health() map[string]bool {
 	return map[string]bool{"ok": true}
 }
 
+func writeJSON(w http.ResponseWriter, status int, v any) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	return json.NewEncoder(w).Encode(v)
+}
+
+func writeJSONError(w http.ResponseWriter, status int, msg string) {
+	_ = writeJSON(w, status, map[string]string{"error": msg})
+}
+
 // listenAddr picks where http.ListenAndServe binds.
 // ADDR wins if set (full host:port, e.g. ":8080" or "127.0.0.1:8080").
 // Else PORT is used as just the port number (e.g. PORT=3000 -> ":3000").
@@ -106,22 +116,21 @@ func handleList(w http.ResponseWriter, r *http.Request) {
 	plate := q.Get("plate")
 	limit, err := parseNonNegQuery(q, "limit")
 	if err != nil {
-		http.Error(w, `{"error":"invalid limit"}`, http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "invalid limit")
 		return
 	}
 	offset, err := parseNonNegQuery(q, "offset")
 	if err != nil {
-		http.Error(w, `{"error":"invalid offset"}`, http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "invalid offset")
 		return
 	}
 	items, err := memory.list(offset, limit, plate)
 	if err != nil {
 		log.Printf("list tracks: %v", err)
-		http.Error(w, `{"error":"server error"}`, http.StatusInternalServerError)
+		writeJSONError(w, http.StatusInternalServerError, "server error")
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(items)
+	_ = writeJSON(w, http.StatusOK, items)
 }
 
 var errNegativeQueryInt = errors.New("negative")
@@ -149,105 +158,98 @@ func handleGetByID(w http.ResponseWriter, r *http.Request) {
 	idPart := strings.TrimPrefix(r.URL.Path, "/tracks/")
 	idPart = strings.TrimSpace(idPart)
 	if idPart == "" || strings.Contains(idPart, "/") {
-		http.Error(w, `{"error":"not found"}`, http.StatusNotFound)
+		writeJSONError(w, http.StatusNotFound, "not found")
 		return
 	}
 	id, err := strconv.ParseInt(idPart, 10, 64)
 	if err != nil || id <= 0 {
-		http.Error(w, `{"error":"invalid id"}`, http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
 	ev, err := memory.get(id)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			http.Error(w, `{"error":"not found"}`, http.StatusNotFound)
+			writeJSONError(w, http.StatusNotFound, "not found")
 			return
 		}
 		log.Printf("delete track %d: %v", id, err)
-		http.Error(w, `{"error":"server error"}`, http.StatusInternalServerError)
+		writeJSONError(w, http.StatusInternalServerError, "server error")
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(ev)
+	_ = writeJSON(w, http.StatusOK, ev)
 }
 
 func handleDelete(w http.ResponseWriter, r *http.Request) {
 	idPart := strings.TrimPrefix(r.URL.Path, "/tracks/")
 	idPart = strings.TrimSpace(idPart)
 	if idPart == "" || strings.Contains(idPart, "/") {
-		http.Error(w, `{"error":"not found"}`, http.StatusNotFound)
+		writeJSONError(w, http.StatusNotFound, "not found")
 		return
 	}
 	id, err := strconv.ParseInt(idPart, 10, 64)
 	if err != nil || id <= 0 {
-		http.Error(w, `{"error":"invalid id"}`, http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
 	err = memory.delete(id)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			http.Error(w, `{"error":"not found"}`, http.StatusNotFound)
+			writeJSONError(w, http.StatusNotFound, "not found")
 			return
 		}
 		log.Printf("get track %d: %v", id, err)
-		http.Error(w, `{"error":"server error"}`, http.StatusInternalServerError)
+		writeJSONError(w, http.StatusInternalServerError, "server error")
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+	_ = writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 func handleReport(w http.ResponseWriter, r *http.Request) {
 	items, err := memory.Report()
 	if err != nil {
 		log.Printf("list tracks: %v", err)
-		http.Error(w, `{"error":"server error"}`, http.StatusInternalServerError)
+		writeJSONError(w, http.StatusInternalServerError, "server error")
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(items)
+	_ = writeJSON(w, http.StatusOK, items)
 }
 
 func handleCreate(w http.ResponseWriter, r *http.Request) {
 	var body createTrackRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		http.Error(w, `{"error":"invalid json"}`, http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "invalid json")
 		return
 	}
 	if body.Plate == "" {
-		http.Error(w, `{"error":"plate is required"}`, http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "plate is required")
 		return
 	}
 
 	ev, err := memory.add(body.Plate, body.Note)
 	if err != nil {
 		log.Printf("create track: %v", err)
-		http.Error(w, `{"error":"server error"}`, http.StatusInternalServerError)
+		writeJSONError(w, http.StatusInternalServerError, "server error")
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	_ = json.NewEncoder(w).Encode(ev)
+	_ = writeJSON(w, http.StatusCreated, ev)
 }
 
 func handleHealth(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(health())
+	_ = writeJSON(w, http.StatusOK, health())
 }
 
 func handleFixture(w http.ResponseWriter, r *http.Request) {
 	if strings.TrimSpace(os.Getenv("FIXTURE")) != "1" {
-		http.Error(w, `{"error":"not found"}`, http.StatusNotFound)
+		writeJSONError(w, http.StatusNotFound, "not found")
 		return
 	}
 	items, err := memory.fixture()
 	if err != nil {
 		log.Printf("fixture: %v", err)
-		http.Error(w, `{"error":"server error"}`, http.StatusInternalServerError)
+		writeJSONError(w, http.StatusInternalServerError, "server error")
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(items)
+	_ = writeJSON(w, http.StatusOK, items)
 }
