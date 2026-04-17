@@ -1,0 +1,247 @@
+openapi: 3.0.3
+info:
+  title: GoRoadmap API
+  version: 0.1.0
+  description: |
+    Minimal API for tracking vehicles by plate and generating simple reports.
+
+servers:
+  - url: http://localhost:8080
+
+tags:
+  - name: health
+  - name: tracks
+  - name: report
+  - name: fixture
+
+paths:
+  /health:
+    get:
+      tags: [health]
+      summary: Health check
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                required: [ok]
+
+  /tracks:
+    get:
+      tags: [tracks]
+      summary: List track events
+      parameters:
+        - in: query
+          name: plate
+          schema: { type: string }
+          description: Partial plate match (ILIKE %plate%)
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 0 }
+        - in: query
+          name: offset
+          schema: { type: integer, minimum: 0 }
+      responses:
+        "200":
+          description: List of track events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TrackEvent"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/ServerError"
+    post:
+      tags: [tracks]
+      summary: Create track event
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTrackRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrackEvent"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /tracks/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: integer, format: int64, minimum: 1 }
+    get:
+      tags: [tracks]
+      summary: Get track event by id
+      responses:
+        "200":
+          description: Track event
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrackEvent"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+    delete:
+      tags: [tracks]
+      summary: Delete track event by id
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                required: [ok]
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /report:
+    get:
+      tags: [report]
+      summary: Aggregate counts by plate
+      parameters:
+        - in: query
+          name: plate
+          schema: { type: string }
+          description: Partial plate match (ILIKE %plate%)
+        - in: query
+          name: from
+          schema: { type: string }
+          description: |
+            Start datetime (RFC3339) or date (YYYY-MM-DD).
+        - in: query
+          name: to
+          schema: { type: string }
+          description: |
+            End datetime (RFC3339) or date (YYYY-MM-DD).
+      responses:
+        "200":
+          description: Plate counts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PlateCount"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /fixture:
+    post:
+      tags: [fixture]
+      summary: Insert fixture rows (dev-only)
+      description: |
+        Protected by environment configuration (see README).
+        If enabled, inserts a few sample track events.
+      security:
+        - ApiKeyAuth: []
+      responses:
+        "200":
+          description: Inserted fixture rows
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TrackEvent"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  schemas:
+    TrackEvent:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        plate: { type: string }
+        note: { type: string }
+        seen_at:
+          type: string
+          format: date-time
+      required: [id, plate, seen_at]
+
+    CreateTrackRequest:
+      type: object
+      properties:
+        plate: { type: string }
+        note: { type: string }
+      required: [plate]
+
+    PlateCount:
+      type: object
+      properties:
+        plate: { type: string }
+        count: { type: integer, format: int64 }
+      required: [plate, count]
+
+    ErrorResponse:
+      type: object
+      properties:
+        error: { type: string }
+      required: [error]
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    ServerError:
+      description: Server error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
