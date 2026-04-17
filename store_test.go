@@ -155,8 +155,8 @@ func TestStoreReport(t *testing.T) {
 		t.Fatal(err)
 	}
 	expected = []PlateCount{
-		{Plate: prefix + "BB222", Count: 1},
 		{Plate: prefix + "AA111", Count: 1},
+		{Plate: prefix + "BB222", Count: 1},
 	}
 	if !reflect.DeepEqual(res, expected) {
 		t.Fatalf("got %#v want %#v", res, expected)
