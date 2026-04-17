@@ -44,9 +44,27 @@ func openStore(dsn string) (*store, error) {
 	return &store{db: db}, nil
 }
 
-func (s *store) Report() ([]PlateCount, error) {
-	query := `SELECT plate, COUNT(*) AS cnt FROM track_events GROUP BY plate ORDER BY cnt DESC`
-	rows, err := s.db.Query(query)
+func (s *store) Report(plate string, from, to time.Time) ([]PlateCount, error) {
+	query := `SELECT plate, COUNT(*) AS cnt FROM track_events WHERE 1=1`
+
+	var args []any
+	if p := strings.TrimSpace(plate); p != "" {
+		query += fmt.Sprintf(` AND plate ILIKE $%d`, len(args)+1)
+		args = append(args, "%"+p+"%")
+	}
+
+	if !from.IsZero() {
+		query += fmt.Sprintf(` AND seen_at >= $%d`, len(args)+1)
+		args = append(args, from)
+	}
+
+	if !to.IsZero() {
+		query += fmt.Sprintf(` AND seen_at <= $%d`, len(args)+1)
+		args = append(args, to)
+	}
+
+	query += ` GROUP BY plate ORDER BY cnt DESC`
+	rows, err := s.db.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}

@@ -90,20 +90,22 @@ func TestStoreReport(t *testing.T) {
 
 	// Unique prefix so we can filter results without touching real data.
 	prefix := fmt.Sprintf("TEST_PLATE_%d_", time.Now().UnixNano())
+	seenAtDef := time.Now().UTC().Truncate(time.Microsecond)
 
 	cases := []struct {
-		plate string
-		note  string
+		plate  string
+		note   string
+		seenAt time.Time
 	}{
-		{plate: prefix + "AA111", note: "x"},
-		{plate: prefix + "AA111", note: "y"},
-		{plate: prefix + "BB222", note: "z"},
+		{plate: prefix + "AA111", note: "x", seenAt: seenAtDef.AddDate(0, 0, -1)},
+		{plate: prefix + "AA111", note: "y", seenAt: seenAtDef},
+		{plate: prefix + "BB222", note: "z", seenAt: seenAtDef.AddDate(0, 0, 1)},
 	}
 
 	// Insert rows
 	ids := make([]int64, 0, len(cases))
 	for _, c := range cases {
-		id := insertRow(t, st, c.plate, c.note, time.Now().UTC().Truncate(time.Microsecond))
+		id := insertRow(t, st, c.plate, c.note, c.seenAt)
 		ids = append(ids, id)
 	}
 	t.Cleanup(func() {
@@ -112,7 +114,8 @@ func TestStoreReport(t *testing.T) {
 		}
 	})
 
-	res, err := st.Report()
+	// Case no filters
+	res, err := st.Report("", time.Time{}, time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,13 +126,40 @@ func TestStoreReport(t *testing.T) {
 			onlyTest = append(onlyTest, r)
 		}
 	}
-
 	expected := []PlateCount{
 		{Plate: prefix + "AA111", Count: 2},
 		{Plate: prefix + "BB222", Count: 1},
 	}
 	if !reflect.DeepEqual(onlyTest, expected) {
 		t.Fatalf("got %#v want %#v", onlyTest, expected)
+	}
+
+	// Case filter plate
+	wantPlate := prefix + "AA111"
+	res, err = st.Report(wantPlate, time.Time{}, time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected = []PlateCount{
+		{Plate: prefix + "AA111", Count: 2},
+	}
+	if !reflect.DeepEqual(res, expected) {
+		t.Fatalf("got %#v want %#v", res, expected)
+	}
+
+	// Case filter from to
+	wantFrom := seenAtDef
+	wantTo := seenAtDef.AddDate(0, 0, 2)
+	res, err = st.Report(prefix, wantFrom, wantTo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected = []PlateCount{
+		{Plate: prefix + "BB222", Count: 1},
+		{Plate: prefix + "AA111", Count: 1},
+	}
+	if !reflect.DeepEqual(res, expected) {
+		t.Fatalf("got %#v want %#v", res, expected)
 	}
 }
 

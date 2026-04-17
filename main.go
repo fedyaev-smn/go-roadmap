@@ -10,6 +10,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func main() {
@@ -207,7 +208,22 @@ func handleDelete(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleReport(w http.ResponseWriter, r *http.Request) {
-	items, err := memory.Report()
+	q := r.URL.Query()
+	plate := q.Get("plate")
+
+	from, err := parseDateOrRFC3339(q.Get("from"))
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid from")
+		return
+	}
+
+	to, err := parseDateOrRFC3339(q.Get("to"))
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid to")
+		return
+	}
+
+	items, err := memory.Report(plate, from, to)
 	if err != nil {
 		log.Printf("list tracks: %v", err)
 		writeJSONError(w, http.StatusInternalServerError, "server error")
@@ -271,4 +287,16 @@ func requireAPIKey(w http.ResponseWriter, r *http.Request) bool {
 		return false
 	}
 	return true
+}
+
+func parseDateOrRFC3339(s string) (time.Time, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return time.Time{}, nil
+	}
+	if t, err := time.Parse(time.RFC3339, s); err == nil {
+		return t, nil
+	}
+	// date only
+	return time.Parse("2006-01-02", s)
 }
