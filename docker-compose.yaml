@@ -1,4 +1,3 @@
-# $env:DATABASE_URL = "postgres://postgres:postgres@localhost:5432/goroadmap?sslmode=disable"
 services:
   postgres:
     image: postgres:16
