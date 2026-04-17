@@ -163,7 +163,7 @@ paths:
         Protected by environment configuration (see README).
         If enabled, inserts a few sample track events.
       security:
-        - ApiKeyAuth: []
+        - BearerAuth: []
       responses:
         "200":
           description: Inserted fixture rows
@@ -173,8 +173,8 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/TrackEvent"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
         "500":
@@ -182,10 +182,10 @@ paths:
 
 components:
   securitySchemes:
-    ApiKeyAuth:
-      type: apiKey
-      in: header
-      name: X-API-Key
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: API_KEY
 
   schemas:
     TrackEvent:
@@ -226,8 +226,8 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
-    Unauthorized:
-      description: Unauthorized
+    Forbidden:
+      description: Forbidden
       content:
         application/json:
           schema:
