@@ -91,11 +91,3 @@ curl.exe -i "http://localhost:8080/report?plate=AB"
 curl.exe -i "http://localhost:8080/report?from=2026-04-01T00:00:00Z&to=2026-05-01T00:00:00Z"
 curl.exe -i "http://localhost:8080/report?from=2026-04-01&to=2026-05-01"
 ```
-
-### Migrations
-
-Apply migrations manually (PowerShell):
-
-```powershell
-Get-Content .\migrations\001_init.up.sql | docker exec -i local-postgres psql -U postgres -d goroadmap -f -
-```
