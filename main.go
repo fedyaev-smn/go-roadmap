@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -8,8 +9,10 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -78,8 +81,41 @@ func main() {
 	} else {
 		log.Printf("listening on http://%s", addr)
 	}
-	if err := http.ListenAndServe(addr, mux); err != nil {
-		_ = st.db.Close()
+
+	// TODO research deeper
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	srv := &http.Server{
+		Addr:    addr,
+		Handler: mux,
+	}
+
+	serverErr := make(chan error, 1)
+	go func() {
+		err := srv.ListenAndServe()
+		if errors.Is(err, http.ErrServerClosed) {
+			serverErr <- nil
+			return
+		}
+		serverErr <- err
+	}()
+
+	select {
+	case <-ctx.Done():
+		log.Printf("shutdown requested")
+	case err := <-serverErr:
+		if err != nil {
+			log.Printf("server error: %v", err)
+		}
+	}
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_ = srv.Shutdown(shutdownCtx)
+	_ = st.db.Close()
+
+	if err := <-serverErr; err != nil {
 		log.Fatal(err)
 	}
 }
